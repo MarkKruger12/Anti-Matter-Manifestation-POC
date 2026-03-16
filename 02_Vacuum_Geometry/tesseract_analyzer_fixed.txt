@@ -1,0 +1,227 @@
+"""
+TESSERACT LOTTO 6/49 ANALYZER - FIXED VERSION
+Ensures correct dataset reading
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+from collections import Counter, defaultdict
+import random
+import os
+
+class TesseractAnalyzer:
+    def __init__(self):
+        # Ensure we're reading the correct file
+        self.data_file = 'lotto_649_complete.csv'
+        if not os.path.exists(self.data_file):
+            print(f"❌ Error: {self.data_file} not found!")
+            return
+            
+        self.df = pd.read_csv(self.data_file)
+        print(f"🔮 TESSERACT ANALYSIS SYSTEM LOADED")
+        print(f"📊 Dataset: {len(self.df):,} draws from {self.df.iloc[0]['Date']} to {self.df.iloc[-1]['Date']}")
+        print(f"💾 File: {self.data_file} ({os.path.getsize(self.data_file)} bytes)")
+        
+    # [Keep all the same analysis methods from previous version]
+    def basic_statistics(self):
+        """Basic number frequency analysis"""
+        print("\n" + "="*60)
+        print("BASIC NUMBER FREQUENCY ANALYSIS")
+        print("="*60)
+        
+        all_numbers = []
+        for i in range(1, 7):
+            all_numbers.extend(self.df[f'Num{i}'].tolist())
+        
+        freq = Counter(all_numbers)
+        
+        print("\n🎯 MOST FREQUENT NUMBERS (All Time):")
+        for num, count in freq.most_common(15):
+            percentage = (count / len(self.df)) * 100
+            print(f"  #{num:2d}: {count:3d} times ({percentage:.1f}%)")
+        
+        print("\n🥶 LEAST FREQUENT NUMBERS (All Time):")
+        for num, count in freq.most_common()[-15:]:
+            percentage = (count / len(self.df)) * 100
+            print(f"  #{num:2d}: {count:3d} times ({percentage:.1f}%)")
+        
+        return freq
+    
+    def recent_trends(self, periods=100):
+        """Analyze recent trends vs historical"""
+        print(f"\n" + "="*60)
+        print(f"RECENT TRENDS (Last {periods} Draws)")
+        print("="*60)
+        
+        recent = self.df.tail(periods)
+        
+        recent_nums = []
+        for i in range(1, 7):
+            recent_nums.extend(recent[f'Num{i}'].tolist())
+        recent_freq = Counter(recent_nums)
+        
+        print("\n🔥 HOT NUMBERS (Recently Frequent):")
+        hot_numbers = []
+        for num, count in recent_freq.most_common(10):
+            hot_numbers.append(num)
+            print(f"  #{num:2d}: {count:2d} times")
+        
+        print("\n❄️  COLD NUMBERS (Recently Rare):")
+        cold_numbers = []
+        for num, count in recent_freq.most_common()[-10:]:
+            cold_numbers.append(num)
+            print(f"  #{num:2d}: {count:2d} times")
+        
+        return hot_numbers, cold_numbers
+    
+    def number_pair_analysis(self):
+        """Analyze frequently occurring number pairs"""
+        print(f"\n" + "="*60)
+        print("NUMBER PAIR ANALYSIS")
+        print("="*60)
+        
+        pair_count = defaultdict(int)
+        
+        for _, row in self.df.iterrows():
+            numbers = sorted([row[f'Num{i}'] for i in range(1, 7)])
+            for i in range(len(numbers)):
+                for j in range(i + 1, len(numbers)):
+                    pair = (numbers[i], numbers[j])
+                    pair_count[pair] += 1
+        
+        print("\n🤝 MOST FREQUENT NUMBER PAIRS:")
+        for pair, count in sorted(pair_count.items(), key=lambda x: x[1], reverse=True)[:10]:
+            percentage = (count / len(self.df)) * 100
+            print(f"  {pair[0]:2d} & {pair[1]:2d}: {count:3d} times ({percentage:.1f}%)")
+        
+        return pair_count
+    
+    def generate_tesseract_projection(self, upcoming_date="November 22, 2025"):
+        """Generate Tesseract projection for upcoming draw"""
+        print(f"\n" + "="*60)
+        print(f"🔮 TESSERACT PROJECTION FOR {upcoming_date}")
+        print("="*60)
+        
+        freq = self.basic_statistics()
+        hot_nums, cold_nums = self.recent_trends()
+        
+        print(f"\n🎯 STRATEGY 1: BALANCED PROJECTION")
+        balanced_picks = hot_nums[:3] + cold_nums[:3]
+        print(f"   Numbers: {sorted(balanced_picks)}")
+        
+        print(f"\n🔥 STRATEGY 2: HOT NUMBERS FOCUS")
+        print(f"   Numbers: {sorted(hot_nums[:6])}")
+        
+        print(f"\n⏰ STRATEGY 3: OVERDUE NUMBERS")
+        overdue_picks = self._overdue_strategy(freq)
+        print(f"   Numbers: {overdue_picks}")
+        
+        print(f"\n🤖 STRATEGY 4: AI-WEIGHTED SELECTION")
+        ai_picks = self._ai_weighted_strategy(freq, hot_nums)
+        print(f"   Numbers: {ai_picks}")
+        
+        return {
+            'balanced': sorted(balanced_picks),
+            'hot_focus': sorted(hot_nums[:6]),
+            'overdue': overdue_picks,
+            'ai_weighted': ai_picks
+        }
+    
+    def _overdue_strategy(self, freq):
+        """Focus on numbers that are overdue"""
+        last_occurrence = {}
+        for num in range(1, 50):
+            mask = (self.df['Num1'] == num) | (self.df['Num2'] == num) | (self.df['Num3'] == num) | \
+                   (self.df['Num4'] == num) | (self.df['Num5'] == num) | (self.df['Num6'] == num)
+            occurrences = self.df[mask]
+            if len(occurrences) > 0:
+                last_occurrence[num] = len(self.df) - occurrences.index[-1] - 1
+        
+        overdue = sorted(last_occurrence.items(), key=lambda x: x[1], reverse=True)[:6]
+        return sorted([num for num, _ in overdue])
+    
+    def _ai_weighted_strategy(self, freq, hot_nums):
+        """AI-inspired weighted random selection"""
+        weights = []
+        for num in range(1, 50):
+            base_weight = freq.get(num, 0)
+            heat_boost = 10 if num in hot_nums[:10] else 0
+            total_weight = base_weight + heat_boost
+            weights.append(total_weight)
+        
+        total = sum(weights)
+        weights = [w/total for w in weights]
+        
+        numbers = list(range(1, 50))
+        picks = []
+        for _ in range(6):
+            if not numbers:
+                break
+            chosen = random.choices(numbers, weights=weights, k=1)[0]
+            picks.append(chosen)
+            idx = numbers.index(chosen)
+            numbers.pop(idx)
+            weights.pop(idx)
+        
+        return sorted(picks)
+    
+    def analyze_last_draw(self):
+        """Analyze the most recent actual draw"""
+        print(f"\n" + "="*60)
+        print("ANALYSIS OF LAST ACTUAL DRAW")
+        print("="*60)
+        
+        last_draw = self.df.iloc[-1]
+        print(f"📅 Date: {last_draw['Date']}")
+        print(f"🔢 Numbers: {last_draw['Num1']}, {last_draw['Num2']}, {last_draw['Num3']}, {last_draw['Num4']}, {last_draw['Num5']}, {last_draw['Num6']}")
+        print(f"🎯 Bonus: {last_draw['Bonus']}")
+
+def main():
+    analyzer = TesseractAnalyzer()
+    
+    print("\n" + "🔮" * 30)
+    print("   TESSERACT LOTTO 6/49 ANALYSIS SUITE")
+    print("🔮" * 30)
+    
+    print("\n" + "="*60)
+    print("ANALYSIS OPTIONS:")
+    print("1. Basic Statistics")
+    print("2. Recent Trends")
+    print("3. Number Pair Analysis") 
+    print("4. Generate Projection for Next Draw")
+    print("5. Analyze Last Draw")
+    print("6. Full Analysis Report")
+    print("7. Exit")
+    print("="*60)
+    
+    choice = input("Choose option (1-7): ").strip()
+    
+    if choice == "1":
+        analyzer.basic_statistics()
+    elif choice == "2":
+        analyzer.recent_trends()
+    elif choice == "3":
+        analyzer.number_pair_analysis()
+    elif choice == "4":
+        projections = analyzer.generate_tesseract_projection()
+    elif choice == "5":
+        analyzer.analyze_last_draw()
+    elif choice == "6":
+        print("\n" + "🎯" * 30)
+        print("   FULL TESSERACT ANALYSIS REPORT")
+        print("🎯" * 30)
+        analyzer.basic_statistics()
+        analyzer.recent_trends()
+        analyzer.number_pair_analysis()
+        analyzer.analyze_last_draw()
+        projections = analyzer.generate_tesseract_projection()
+    elif choice == "7":
+        print("👋 Exiting Tesseract Analyzer...")
+        return
+    else:
+        print("❌ Invalid choice!")
+
+if __name__ == "__main__":
+    main()

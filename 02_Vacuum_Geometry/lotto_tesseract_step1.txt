@@ -1,0 +1,19 @@
+import pandas as pd
+
+file_path = 'lotto649_history.csv'
+
+try:
+    df = pd.read_csv(file_path)
+except FileNotFoundError:
+    print("CSV file not found. Place lotto649_history.csv in the same directory.")
+    exit()
+
+df['Vector'] = df[['N1','N2','N3','N4','N5','N6']].values.tolist()
+df['Normalized'] = df['Vector'].apply(lambda v: [n/49 for n in v])
+
+print("Loaded", len(df), "draws.")
+print("Sample vector:", df['Vector'].iloc[0])
+print("Sample normalized:", df['Normalized'].iloc[0])
+
+df.to_csv('lotto_vectors.csv', index=False)
+print("Vectorized data saved to lotto_vectors.csv")

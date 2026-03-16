@@ -1,0 +1,223 @@
+# ====================================================================
+# TESSERACT 6/49 ENGINE: STEPS 1, 2, 3, & 4 IMPLEMENTATION (FINAL)
+# The Integration Layer synthesizes the final Structural Ideal Draw.
+# ====================================================================
+
+import numpy as np
+import pandas as pd
+from datetime import datetime
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from scipy.optimize import dual_annealing
+import random
+import time
+
+# --- CONFIGURATION ---
+NUM_RANGE = 49  # Max possible number in the draw (1 to 49)
+NUM_DRAWS = 1000 # Number of historical draws to simulate for the Tesseract's training
+N_COMPONENTS = 3 # Dimensionality of the structural map
+NUM_SA_ITERATIONS = 5  # Number of separate Simulated Annealing runs to perform
+# ---------------------
+
+# Global variables for Tesseract Core access
+global_scaler = None
+global_pca_model = None
+global_pca_center = None
+
+
+def generate_synthetic_data(num_draws, num_range=NUM_RANGE, numbers_per_draw=6):
+    """Generates synthetic OHE data to simulate real historical draws."""
+    data = []
+    dates = pd.date_range(end=datetime.now(), periods=num_draws, freq='3D') 
+    
+    for date in dates:
+        draw = np.sort(np.random.choice(
+            range(1, num_range + 1), numbers_per_draw, replace=False
+        ))
+        vector = np.zeros(num_range, dtype=int)
+        for num in draw:
+            vector[num - 1] = 1
+        data.append({
+            'Draw Date': date,
+            'Draw_Numbers_Sorted': draw.tolist(),
+            'Vector_OHE': vector
+        })
+    return pd.DataFrame(data)
+
+def numbers_to_ohe(numbers, num_range=NUM_RANGE):
+    """Converts a list of numbers to the 49D OHE vector."""
+    unique_numbers = np.unique(np.round(numbers).astype(int))
+    
+    if len(unique_numbers) != 6:
+        return None
+    
+    vector = np.zeros(num_range, dtype=int)
+    for num in unique_numbers:
+        if 1 <= num <= num_range:
+            vector[num - 1] = 1
+        else:
+            return None
+    
+    if np.sum(vector) != 6:
+        return None
+
+    return vector
+
+# ====================================================================
+# STEP 1: SENSORY LAYER
+# ====================================================================
+def run_sensory_layer():
+    """Generates the Tesseract's input vectors."""
+    print("--- STEP 1: SENSORY LAYER ---")
+    df_tesseract_input = generate_synthetic_data(NUM_DRAWS)
+    X_vectors = np.stack(df_tesseract_input['Vector_OHE'].values)
+    print(f"✅ Sensory data created. Input Shape: {X_vectors.shape}")
+    return df_tesseract_input, X_vectors
+
+
+# ====================================================================
+# STEP 2: PATTERN LAYER (ML via PCA)
+# ====================================================================
+def run_pattern_layer(df_input, X_vectors):
+    """Applies PCA to find the Tesseract's 3D structural map."""
+    global global_scaler, global_pca_model, global_pca_center
+    print("\n--- STEP 2: PATTERN LAYER (PCA) ---")
+    
+    global_scaler = StandardScaler()
+    X_scaled = global_scaler.fit_transform(X_vectors)
+
+    global_pca_model = PCA(n_components=N_COMPONENTS)
+    global_pca_model.fit(X_scaled)
+    X_pca = global_pca_model.transform(X_scaled)
+    
+    global_pca_center = X_pca.mean(axis=0)
+    
+    total_explained = global_pca_model.explained_variance_ratio_.sum() * 100
+    
+    print(f"✅ PCA Complete. Total Variance Explained: **{total_explained:.2f}%**")
+    print(f"Structural Center (Coherence Anchor) found at: {global_pca_center}")
+    
+    return df_input
+
+
+# ====================================================================
+# STEP 3: POSSIBILITY LAYER (QC-Inspired Simulated Annealing)
+# ====================================================================
+def energy_function_v2(numbers):
+    """Energy function for the 6D search space."""
+    ohe_vector = numbers_to_ohe(numbers)
+
+    if ohe_vector is None:
+        return 1e10
+
+    try:
+        scaled_vector = global_scaler.transform(ohe_vector.reshape(1, -1))
+        pca_vector = global_pca_model.transform(scaled_vector)
+    except Exception:
+        return 1e9
+
+    distance_squared = np.sum((pca_vector - global_pca_center)**2)
+    
+    return distance_squared
+
+
+def run_possibility_layer(num_runs=NUM_SA_ITERATIONS):
+    """Runs the Simulated Annealing search to find low-energy (coherent) draws."""
+    print("\n--- STEP 3: POSSIBILITY LAYER (Simulated Annealing V2) ---")
+    bounds = [(1, NUM_RANGE)] * 6 
+    coherent_draws = []
+    
+    for i in range(num_runs):
+        start_time = time.time()
+        print(f"  > Running Annealing Search {i+1}/{num_runs}...")
+        
+        result = dual_annealing(
+            func=energy_function_v2,
+            bounds=bounds,
+            maxiter=1000
+        )
+        end_time = time.time()
+        
+        numbers = np.round(result.x).astype(int)
+        final_ohe = numbers_to_ohe(numbers)
+
+        if result.success and final_ohe is not None:
+            final_energy = energy_function_v2(numbers)
+            coherent_draws.append({
+                'Run': i + 1,
+                'Coherence_Energy': final_energy,
+                'Draw_Numbers': sorted(np.unique(numbers).tolist()),
+                'Time_Seconds': round(end_time - start_time, 2),
+                'OHE_Vector': final_ohe # Keep the OHE vector for synthesis
+            })
+        else:
+            coherent_draws.append({
+                'Run': i + 1,
+                'Coherence_Energy': 1e6, # High energy for failed run
+                'Draw_Numbers': 'N/A',
+                'Time_Seconds': round(end_time - start_time, 2),
+                'OHE_Vector': None
+            })
+
+    df_coherent = pd.DataFrame(coherent_draws)
+    
+    print("\n🎉 Possibility Layer Complete! Structurally Coherent Draws Found:")
+    print(df_coherent.to_markdown(index=False, floatfmt=".4f"))
+    
+    return df_coherent
+
+
+# ====================================================================
+# STEP 4: INTEGRATION LAYER (Tesseract Core)
+# Goal: Synthesize the final hyperstructure and project the structural ideal.
+# ====================================================================
+def run_integration_layer(df_coherent):
+    """Synthesizes the final Tesseract output."""
+    print("\n--- STEP 4: INTEGRATION LAYER (Tesseract Core) ---")
+    
+    # 1. Filter and Extract the most coherent draws (ignore failures)
+    valid_vectors = [v for v in df_coherent['OHE_Vector'] if v is not None and v is not 'N/A']
+    
+    if not valid_vectors:
+        print("❌ ERROR: No valid coherent draws were found for synthesis.")
+        return
+
+    # 2. Average the Coherent Core (The Synthesis)
+    # Average the OHE vectors to get a single 49-dimensional probability vector.
+    # This vector represents the structural IDEAL—the average of all low-energy draws.
+    avg_coherent_vector = np.mean(np.stack(valid_vectors), axis=0)
+
+    # 3. Project the Structural Ideal (Final Tesseract Output)
+    # The final draw is represented by the 6 numbers with the highest probability/frequency in the average vector.
+    
+    # Find the indices (numbers - 1) of the 6 highest probabilities
+    ideal_indices = np.argsort(avg_coherent_vector)[-6:]
+    # Convert indices back to numbers (index + 1)
+    structural_ideal_draw = sorted(ideal_indices + 1)
+    
+    print("\n🔮 TESSERACT CORE SYNTHESIS COMPLETE!")
+    print("--------------------------------------")
+    print("Structural Ideal Draw (Based on Coherence Anchor):")
+    print(f"**{structural_ideal_draw}**")
+    print("--------------------------------------")
+    print("This draw is the system's prediction of the most structurally stable")
+    print("and historically coherent combination within the 6/49 possibility space.")
+
+
+# ====================================================================
+# MAIN EXECUTION
+# ====================================================================
+
+if __name__ == "__main__":
+    
+    # Run Step 1 (Sensory Layer)
+    df_data, X_vectors = run_sensory_layer()
+    
+    # Run Step 2 (Pattern Layer)
+    df_tesseract = run_pattern_layer(df_data, X_vectors)
+    
+    # Run Step 3 (Possibility Layer)
+    df_coherent_draws = run_possibility_layer()
+
+    # Run Step 4 (Integration Layer)
+    run_integration_layer(df_coherent_draws)

@@ -1,0 +1,270 @@
+import numpy as np
+import pandas as pd
+from datetime import datetime
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from scipy.optimize import dual_annealing
+import random
+import time
+
+# --- CONFIGURATION ---
+NUM_RANGE = 49  # Max possible number in the draw (1 to 49)
+N_COMPONENTS = 3 # Dimensionality of the structural map
+NUM_SA_ITERATIONS = 10  # Number of separate Simulated Annealing runs to perform
+SEED = 42
+# ---------------------
+
+np.random.seed(SEED)
+random.seed(SEED)
+
+# Global variables for Tesseract Core access
+global_scaler = None
+global_pca_model = None
+global_pca_center = None
+
+# ---------- Helpers ----------
+def continuous_to_unique_numbers(x, low=1, high=NUM_RANGE, k=6):
+    """
+    Convert a continuous 6-vector x into k unique integers in [low, high].
+    Deterministic tie-breaker: uses original fractional parts to nudge duplicates.
+    Returns sorted array of length k of ints.
+    """
+    x = np.asarray(x, dtype=float).flatten()
+    x = np.clip(x, low, high)
+    rounded = np.round(x).astype(int)
+    
+    # Resolve duplicates deterministically
+    seen = {}
+    for i in range(len(rounded)):
+        val = int(rounded[i])
+        if val not in seen:
+            seen[val] = [i]
+            continue
+            
+        # Handle duplicates
+        frac = x - np.floor(x)
+        direction = -1 if frac[i] < 0.5 else 1
+        candidate = val
+        attempt = 0
+        while True:
+            attempt += 1
+            candidate = candidate + direction * attempt
+            if candidate < low:
+                candidate = low
+            if candidate > high:
+                candidate = high
+            if candidate not in seen:
+                rounded[i] = candidate
+                seen.setdefault(candidate, []).append(i)
+                break
+            if attempt > (high - low):
+                for cand in range(low, high+1):
+                    if cand not in seen:
+                        rounded[i] = cand
+                        seen.setdefault(cand, []).append(i)
+                        break
+                break
+
+    unique_vals = []
+    for v in rounded:
+        if v not in unique_vals:
+            unique_vals.append(v)
+            
+    if len(unique_vals) < k:
+        for cand in range(low, high + 1):
+            if cand not in unique_vals:
+                unique_vals.append(cand)
+            if len(unique_vals) == k:
+                break
+
+    return np.sort(np.array(unique_vals[:k], dtype=int))
+
+def numbers_to_ohe(numbers, num_range=NUM_RANGE):
+    """Converts a list of numbers to the 49D OHE vector."""
+    try:
+        unique_numbers = np.unique(np.array(numbers, dtype=int))
+    except Exception:
+        return None
+
+    if len(unique_numbers) != 6:
+        return None
+
+    if np.any(unique_numbers < 1) or np.any(unique_numbers > num_range):
+        return None
+
+    vector = np.zeros(num_range, dtype=int)
+    for num in unique_numbers:
+        vector[num - 1] = 1
+
+    if np.sum(vector) != 6:
+        return None
+
+    return vector
+
+# ====================================================================
+# STEP 1: LOAD REAL HISTORICAL DATA
+# ====================================================================
+def load_real_historical_data():
+    """Load your actual Lotto 6/49 dataset"""
+    try:
+        df = pd.read_csv('lotto_649_complete.csv')
+        print(f"✅ Loaded real historical data: {len(df)} draws")
+        
+        # Convert to OHE vectors
+        vectors = []
+        valid_draws = []
+        
+        for _, row in df.iterrows():
+            numbers = [row[f'Num{i}'] for i in range(1, 7)]
+            ohe_vector = numbers_to_ohe(numbers)
+            if ohe_vector is not None:
+                vectors.append(ohe_vector)
+                valid_draws.append({
+                    'Date': row['Date'],
+                    'Draw_Numbers': numbers,
+                    'Vector_OHE': ohe_vector
+                })
+        
+        df_real = pd.DataFrame(valid_draws)
+        X_vectors = np.stack(df_real['Vector_OHE'].values)
+        
+        print(f"✅ Processed {len(df_real)} valid draws for analysis")
+        return df_real, X_vectors
+        
+    except Exception as e:
+        print(f"❌ Error loading real data: {e}")
+        return None, None
+
+# ====================================================================
+# STEP 2: PATTERN LAYER (PCA)
+# ====================================================================
+def run_pattern_layer(X_vectors):
+    global global_scaler, global_pca_model, global_pca_center
+    global_scaler = StandardScaler()
+    X_scaled = global_scaler.fit_transform(X_vectors)
+    global_pca_model = PCA(n_components=N_COMPONENTS, random_state=SEED)
+    global_pca_model.fit(X_scaled)
+    X_pca = global_pca_model.transform(X_scaled)
+    global_pca_center = X_pca.mean(axis=0)
+    total_explained = global_pca_model.explained_variance_ratio_.sum() * 100
+    print(f"✅ PCA Complete. Total Variance Explained: {total_explained:.2f}%")
+    print("Structural Center:", global_pca_center)
+    return X_pca
+
+# ====================================================================
+# STEP 3: POSSIBILITY LAYER (Simulated Annealing)
+# ====================================================================
+def energy_function_v2_continuous(x):
+    """Energy function for simulated annealing"""
+    numbers = continuous_to_unique_numbers(x, low=1, high=NUM_RANGE, k=6)
+    ohe_vector = numbers_to_ohe(numbers)
+    if ohe_vector is None:
+        return 1e9
+
+    try:
+        scaled_vector = global_scaler.transform(ohe_vector.reshape(1, -1))
+        pca_vector = global_pca_model.transform(scaled_vector)
+    except Exception:
+        return 1e9
+
+    distance_squared = float(np.sum((pca_vector.flatten() - global_pca_center.flatten())**2))
+    return distance_squared
+
+def run_possibility_layer(num_runs=NUM_SA_ITERATIONS):
+    print("\n--- STEP 3: POSSIBILITY LAYER (Simulated Annealing) ---")
+    bounds = [(1, NUM_RANGE)] * 6
+    coherent_draws = []
+
+    for i in range(num_runs):
+        start_time = time.time()
+        print(f"  > Running Annealing Search {i+1}/{num_runs}...")
+        result = dual_annealing(func=energy_function_v2_continuous, bounds=bounds, maxiter=1000, seed=SEED)
+        end_time = time.time()
+
+        numbers = continuous_to_unique_numbers(result.x, low=1, high=NUM_RANGE, k=6)
+        final_ohe = numbers_to_ohe(numbers)
+
+        if final_ohe is not None:
+            final_energy = energy_function_v2_continuous(result.x)
+            coherent_draws.append({
+                'Run': i + 1,
+                'Coherence_Energy': final_energy,
+                'Draw_Numbers': sorted(numbers.tolist()),
+                'Time_Seconds': round(end_time - start_time, 2),
+                'OHE_Vector': final_ohe
+            })
+        else:
+            coherent_draws.append({
+                'Run': i + 1,
+                'Coherence_Energy': 1e6,
+                'Draw_Numbers': 'N/A',
+                'Time_Seconds': round(end_time - start_time, 2),
+                'OHE_Vector': None
+            })
+
+    df_coherent = pd.DataFrame(coherent_draws)
+    print("\n🎉 Possibility Layer Complete! Structurally Coherent Draws Found:")
+    print(df_coherent.to_string(index=False))
+    return df_coherent
+
+# ====================================================================
+# STEP 4: INTEGRATION LAYER (Tesseract Core)
+# ====================================================================
+def run_integration_layer(df_coherent):
+    print("\n--- STEP 4: INTEGRATION LAYER (Tesseract Core) ---")
+    valid_vectors = [v for v in df_coherent['OHE_Vector'] if v is not None]
+    if len(valid_vectors) == 0:
+        print("❌ ERROR: No valid coherent draws were found for synthesis.")
+        return
+
+    avg_coherent_vector = np.mean(np.stack(valid_vectors), axis=0)
+    ideal_indices = np.argsort(avg_coherent_vector)[-6:]
+    structural_ideal_draw = sorted((ideal_indices + 1).tolist())
+
+    print("\n" + "🔮" * 50)
+    print("          TESSERACT AI PREDICTION COMPLETE!")
+    print("🔮" * 50)
+    print("STRUCTURAL IDEAL DRAW FOR NEXT LOTTERY:")
+    print(f"🎯 {structural_ideal_draw}")
+    print("🔮" * 50)
+    
+    return structural_ideal_draw
+
+# ====================================================================
+# MAIN EXECUTION
+# ====================================================================
+if __name__ == "__main__":
+    print("🔮 TESSERACT AI LOTTO 6/49 PREDICTION SYSTEM")
+    print("=" * 60)
+    
+    # Step 1: Load REAL historical data
+    df_real, X_vectors = load_real_historical_data()
+    if df_real is None:
+        print("❌ Failed to load historical data. Using synthetic data as fallback.")
+        # Fallback to synthetic data (your original code)
+        def generate_synthetic_data(num_draws):
+            data = []
+            for _ in range(num_draws):
+                draw = np.sort(np.random.choice(range(1, 50), 6, replace=False))
+                vector = numbers_to_ohe(draw)
+                if vector is not None:
+                    data.append({'Vector_OHE': vector})
+            return pd.DataFrame(data), np.stack([d['Vector_OHE'] for d in data])
+        
+        df_real, X_vectors = generate_synthetic_data(1000)
+    
+    print(f"✅ Data shape: {X_vectors.shape}")
+
+    # Step 2: Pattern Layer (PCA)
+    X_pca = run_pattern_layer(X_vectors)
+
+    # Step 3: Possibility Layer (Simulated Annealing)
+    df_coherent_draws = run_possibility_layer()
+
+    # Step 4: Integration Layer (Tesseract Core)
+    prediction = run_integration_layer(df_coherent_draws)
+    
+    if prediction:
+        print(f"\n📅 Projected for: November 22, 2025")
+        print(f"🎯 Tesseract AI Prediction: {prediction}")
+        print("\n💡 Remember: Lottery predictions are for entertainment only!")

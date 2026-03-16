@@ -1,0 +1,519 @@
+# ====================================================================
+# TESSERACT 6/49 ENGINE: ENHANCED IMPLEMENTATION
+# Advanced Lottery Prediction System with Multiple Analysis Methods
+# ====================================================================
+
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from scipy.optimize import dual_annealing
+import random
+import time
+import warnings
+warnings.filterwarnings('ignore')
+
+# --- ENHANCED CONFIGURATION ---
+NUM_RANGE = 49
+NUM_DRAWS = 2000  # Increased for better pattern recognition
+N_COMPONENTS = 4  # Increased dimensions for better capture of complexity
+NUM_SA_ITERATIONS = 8  # More iterations for better convergence
+NUM_FINAL_PREDICTIONS = 5  # Generate multiple predictions
+# ------------------------------
+
+# Global variables for Tesseract Core access
+global_scaler = None
+global_pca_model = None
+global_pca_center = None
+historical_patterns = None
+
+class TesseractAnalyzer:
+    """Enhanced analysis class for lottery pattern recognition"""
+    
+    def __init__(self):
+        self.hot_numbers = None
+        self.cold_numbers = None
+        self.number_frequencies = None
+        self.pair_analysis = None
+        
+    def analyze_historical_patterns(self, df):
+        """Comprehensive analysis of historical draw patterns"""
+        print("\n🔍 ANALYZING HISTORICAL PATTERNS...")
+        
+        # Extract all historical numbers
+        all_numbers = []
+        for numbers_list in df['Draw_Numbers_Sorted']:
+            all_numbers.extend(numbers_list)
+        
+        # Calculate number frequencies
+        unique, counts = np.unique(all_numbers, return_counts=True)
+        self.number_frequencies = dict(zip(unique, counts))
+        
+        # Identify hot and cold numbers
+        sorted_freq = sorted(self.number_frequencies.items(), key=lambda x: x[1], reverse=True)
+        self.hot_numbers = [num for num, freq in sorted_freq[:10]]
+        self.cold_numbers = [num for num, freq in sorted_freq[-10:]]
+        
+        # Analyze number pairs
+        self.pair_analysis = self._analyze_number_pairs(df)
+        
+        print(f"🔥 HOT Numbers (Most Frequent): {self.hot_numbers}")
+        print(f"❄️ COLD Numbers (Least Frequent): {self.cold_numbers}")
+        
+        return self
+    
+    def _analyze_number_pairs(self, df):
+        """Analyze frequently occurring number pairs"""
+        pair_counts = {}
+        for numbers in df['Draw_Numbers_Sorted']:
+            for i in range(len(numbers)):
+                for j in range(i+1, len(numbers)):
+                    pair = tuple(sorted([numbers[i], numbers[j]]))
+                    pair_counts[pair] = pair_counts.get(pair, 0) + 1
+        
+        # Return top pairs
+        return sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)[:20]
+
+def generate_enhanced_synthetic_data(num_draws, num_range=NUM_RANGE, numbers_per_draw=6):
+    """Generates realistic synthetic data with actual lottery patterns"""
+    print("🎲 GENERATING ENHANCED SYNTHETIC DATA...")
+    
+    data = []
+    base_date = datetime.now() - timedelta(days=num_draws*3)
+    
+    # Realistic probability distribution (slightly weighted toward middle numbers)
+    probabilities = np.array([1/(abs(i-25)+10) for i in range(1, num_range+1)])
+    probabilities = probabilities / probabilities.sum()
+    
+    for i in range(num_draws):
+        # Mix random selection with some pattern-based selection
+        if i % 10 == 0:  # Every 10th draw has some pattern
+            # Create draws with some consecutive numbers
+            start_num = random.randint(1, 40)
+            draw = [start_num, start_num+1] + sorted(random.sample(
+                [x for x in range(1, num_range+1) if x not in [start_num, start_num+1]], 
+                4
+            ))
+        elif i % 7 == 0:  # Some draws with high-low balance
+            low_nums = sorted(random.sample(range(1, 16), 3))
+            high_nums = sorted(random.sample(range(34, 50), 3))
+            draw = sorted(low_nums + high_nums)
+        else:
+            # Standard probabilistic draw
+            draw = np.random.choice(range(1, num_range+1), numbers_per_draw, 
+                                  replace=False, p=probabilities)
+            draw = sorted(draw)
+        
+        # Convert to OHE vector
+        vector = np.zeros(num_range, dtype=int)
+        for num in draw:
+            vector[num - 1] = 1
+            
+        draw_date = base_date + timedelta(days=i*3)
+        data.append({
+            'Draw_Date': draw_date,
+            'Draw_Numbers_Sorted': draw,
+            'Vector_OHE': vector
+        })
+    
+    print(f"✅ Generated {len(data)} enhanced synthetic draws")
+    return pd.DataFrame(data)
+
+def numbers_to_ohe(numbers, num_range=NUM_RANGE):
+    """Enhanced conversion with validation"""
+    try:
+        unique_numbers = np.unique(np.round(numbers).astype(int))
+        
+        if len(unique_numbers) != 6:
+            return None
+        
+        # Validate number range
+        if any(num < 1 or num > num_range for num in unique_numbers):
+            return None
+            
+        vector = np.zeros(num_range, dtype=int)
+        for num in unique_numbers:
+            vector[num - 1] = 1
+        
+        if np.sum(vector) != 6:
+            return None
+
+        return vector
+    except:
+        return None
+
+# ====================================================================
+# STEP 1: ENHANCED SENSORY LAYER
+# ====================================================================
+def run_sensory_layer():
+    """Enhanced data generation and analysis"""
+    print("\n" + "="*50)
+    print("STEP 1: ENHANCED SENSORY LAYER")
+    print("="*50)
+    
+    df_tesseract_input = generate_enhanced_synthetic_data(NUM_DRAWS)
+    X_vectors = np.stack(df_tesseract_input['Vector_OHE'].values)
+    
+    # Initialize and run pattern analysis
+    analyzer = TesseractAnalyzer().analyze_historical_patterns(df_tesseract_input)
+    
+    print(f"✅ Enhanced sensory data created. Input Shape: {X_vectors.shape}")
+    return df_tesseract_input, X_vectors, analyzer
+
+# ====================================================================
+# STEP 2: ENHANCED PATTERN LAYER
+# ====================================================================
+def run_pattern_layer(df_input, X_vectors, analyzer):
+    """Enhanced pattern recognition with multiple techniques"""
+    global global_scaler, global_pca_model, global_pca_center
+    
+    print("\n" + "="*50)
+    print("STEP 2: ENHANCED PATTERN LAYER")
+    print("="*50)
+    
+    # Enhanced preprocessing
+    global_scaler = StandardScaler()
+    X_scaled = global_scaler.fit_transform(X_vectors)
+
+    # Dimensionality reduction with more components
+    global_pca_model = PCA(n_components=N_COMPONENTS)
+    global_pca_model.fit(X_scaled)
+    X_pca = global_pca_model.transform(X_scaled)
+    
+    global_pca_center = X_pca.mean(axis=0)
+    
+    # Additional clustering analysis
+    kmeans = KMeans(n_clusters=5, random_state=42)
+    clusters = kmeans.fit_predict(X_pca)
+    df_input['Cluster'] = clusters
+    
+    total_explained = global_pca_model.explained_variance_ratio_.sum() * 100
+    
+    print(f"✅ Enhanced PCA Complete. Variance Explained: {total_explained:.2f}%")
+    print(f"📍 Structural Center: {global_pca_center}")
+    print(f"📊 Data clustered into {len(np.unique(clusters))} distinct patterns")
+    
+    return df_input
+
+# ====================================================================
+# STEP 3: ENHANCED POSSIBILITY LAYER
+# ====================================================================
+def enhanced_energy_function(numbers, analyzer):
+    """Advanced energy function incorporating multiple factors"""
+    ohe_vector = numbers_to_ohe(numbers)
+
+    if ohe_vector is None:
+        return 1e10
+
+    try:
+        # PCA coherence
+        scaled_vector = global_scaler.transform(ohe_vector.reshape(1, -1))
+        pca_vector = global_pca_model.transform(scaled_vector)
+        pca_distance = np.sum((pca_vector - global_pca_center)**2)
+        
+        # Historical pattern alignment
+        current_numbers = [i+1 for i, val in enumerate(ohe_vector) if val == 1]
+        
+        # Factor 1: Include some hot numbers
+        hot_count = sum(1 for num in current_numbers if num in analyzer.hot_numbers)
+        hot_penalty = max(0, 2 - hot_count) * 0.5  # Prefer at least 2 hot numbers
+        
+        # Factor 2: Avoid too many cold numbers
+        cold_count = sum(1 for num in current_numbers if num in analyzer.cold_numbers)
+        cold_penalty = max(0, cold_count - 1) * 0.3  # Penalize more than 1 cold number
+        
+        # Factor 3: Number spread (avoid clustering)
+        number_spread = np.std(current_numbers)
+        spread_penalty = max(0, 10 - number_spread) * 0.1  # Prefer good spread
+        
+        # Factor 4: Even-odd balance
+        odd_count = sum(1 for num in current_numbers if num % 2 == 1)
+        balance_penalty = abs(odd_count - 3) * 0.2  # Prefer 3 odd, 3 even
+        
+        total_energy = (pca_distance + hot_penalty + cold_penalty + 
+                       spread_penalty + balance_penalty)
+        
+        return total_energy
+        
+    except Exception as e:
+        return 1e9
+
+def run_possibility_layer(analyzer, num_runs=NUM_SA_ITERATIONS):
+    """Enhanced optimization with multiple strategies"""
+    print("\n" + "="*50)
+    print("STEP 3: ENHANCED POSSIBILITY LAYER")
+    print("="*50)
+    
+    bounds = [(1, NUM_RANGE)] * 6 
+    coherent_draws = []
+    
+    for i in range(num_runs):
+        start_time = time.time()
+        print(f"  🔍 Running Enhanced Annealing Search {i+1}/{num_runs}...")
+        
+        # Vary initial conditions for diversity
+        if i % 3 == 0:
+            # Start with hot numbers bias
+            x0 = analyzer.hot_numbers[:3] + random.sample(range(1, NUM_RANGE+1), 3)
+        elif i % 3 == 1:
+            # Start with balanced numbers
+            x0 = random.sample(range(1, 26), 3) + random.sample(range(26, 50), 3)
+        else:
+            # Random start
+            x0 = None
+        
+        result = dual_annealing(
+            func=lambda x: enhanced_energy_function(x, analyzer),
+            bounds=bounds,
+            x0=x0,
+            maxiter=1500,
+            seed=42+i
+        )
+        
+        end_time = time.time()
+        
+        numbers = np.round(result.x).astype(int)
+        final_ohe = numbers_to_ohe(numbers)
+
+        if result.success and final_ohe is not None:
+            final_energy = enhanced_energy_function(numbers, analyzer)
+            draw_numbers = sorted(np.unique(numbers).tolist())
+            
+            # Additional analysis of the draw
+            odd_count = sum(1 for num in draw_numbers if num % 2 == 1)
+            sum_total = sum(draw_numbers)
+            hot_count = sum(1 for num in draw_numbers if num in analyzer.hot_numbers)
+            
+            coherent_draws.append({
+                'Run': i + 1,
+                'Coherence_Energy': final_energy,
+                'Draw_Numbers': draw_numbers,
+                'Time_Seconds': round(end_time - start_time, 2),
+                'OHE_Vector': final_ohe,
+                'Odd_Count': odd_count,
+                'Sum_Total': sum_total,
+                'Hot_Numbers': hot_count,
+                'Quality_Score': calculate_quality_score(draw_numbers, analyzer)
+            })
+        else:
+            coherent_draws.append({
+                'Run': i + 1,
+                'Coherence_Energy': 1e6,
+                'Draw_Numbers': 'N/A',
+                'Time_Seconds': round(end_time - start_time, 2),
+                'OHE_Vector': None,
+                'Odd_Count': 0,
+                'Sum_Total': 0,
+                'Hot_Numbers': 0,
+                'Quality_Score': 0
+            })
+
+    df_coherent = pd.DataFrame(coherent_draws)
+    df_valid = df_coherent[df_coherent['OHE_Vector'].notna()]
+    
+    print(f"\n🎉 Enhanced Possibility Layer Complete!")
+    print(f"✅ Found {len(df_valid)} valid coherent draws")
+    
+    # Display detailed results
+    display_columns = ['Run', 'Draw_Numbers', 'Coherence_Energy', 'Odd_Count', 'Sum_Total', 'Hot_Numbers', 'Quality_Score']
+    print(df_valid[display_columns].to_markdown(index=False, floatfmt=".3f"))
+    
+    return df_coherent
+
+def calculate_quality_score(draw_numbers, analyzer):
+    """Calculate a comprehensive quality score for a draw"""
+    if draw_numbers == 'N/A':
+        return 0
+    
+    score = 0
+    # Balance score (prefer 3 odd, 3 even)
+    odd_count = sum(1 for num in draw_numbers if num % 2 == 1)
+    score += 10 - abs(odd_count - 3) * 2
+    
+    # Hot numbers score
+    hot_count = sum(1 for num in draw_numbers if num in analyzer.hot_numbers)
+    score += hot_count * 3
+    
+    # Spread score (avoid clustering)
+    spread = np.std(draw_numbers)
+    score += min(10, spread * 2)
+    
+    # Sum score (prefer moderate sums)
+    sum_total = sum(draw_numbers)
+    ideal_sum = 150  # Rough average for 6/49
+    score += max(0, 10 - abs(sum_total - ideal_sum) / 10)
+    
+    return score
+
+# ====================================================================
+# STEP 4: ENHANCED INTEGRATION LAYER
+# ====================================================================
+def run_integration_layer(df_coherent, analyzer):
+    """Enhanced synthesis with multiple prediction strategies"""
+    print("\n" + "="*50)
+    print("STEP 4: ENHANCED INTEGRATION LAYER")
+    print("="*50)
+    
+    # Filter valid draws
+    valid_draws = df_coherent[df_coherent['OHE_Vector'].notna()].copy()
+    
+    if valid_draws.empty:
+        print("❌ ERROR: No valid coherent draws found!")
+        return
+    
+    print(f"📊 Analyzing {len(valid_draws)} valid coherent draws...")
+    
+    # Strategy 1: Probability-based synthesis (original method)
+    valid_vectors = [v for v in valid_draws['OHE_Vector']]
+    avg_coherent_vector = np.mean(np.stack(valid_vectors), axis=0)
+    
+    # Strategy 2: Quality-weighted synthesis
+    quality_scores = valid_draws['Quality_Score'].values
+    quality_weights = quality_scores / quality_scores.sum()
+    weighted_avg_vector = np.average(np.stack(valid_vectors), axis=0, weights=quality_weights)
+    
+    # Strategy 3: Top-performing draws
+    top_draws = valid_draws.nlargest(3, 'Quality_Score')
+    
+    print("\n🔮 TESSERACT CORE SYNTHESIS COMPLETE!")
+    print("="*50)
+    
+    # Generate multiple predictions
+    print("\n🏆 TOP PREDICTIONS:")
+    print("-" * 40)
+    
+    # Prediction 1: Highest probability numbers
+    prob_indices = np.argsort(avg_coherent_vector)[-6:]
+    prediction_1 = sorted(prob_indices + 1)
+    print(f"1. Probability-Based:    {prediction_1}")
+    
+    # Prediction 2: Quality-weighted
+    qual_indices = np.argsort(weighted_avg_vector)[-6:]
+    prediction_2 = sorted(qual_indices + 1)
+    print(f"2. Quality-Weighted:     {prediction_2}")
+    
+    # Prediction 3: Best individual draw
+    best_draw = top_draws.iloc[0]['Draw_Numbers']
+    print(f"3. Best Single Draw:     {best_draw}")
+    
+    # Prediction 4: Smart combination
+    smart_prediction = generate_smart_prediction(valid_draws, analyzer)
+    print(f"4. Smart Combination:    {smart_prediction}")
+    
+    # Prediction 5: Consensus approach
+    consensus = generate_consensus_prediction(valid_draws)
+    print(f"5. Consensus:            {consensus}")
+    
+    print("\n📈 PREDICTION ANALYSIS:")
+    print("-" * 40)
+    analyze_predictions([prediction_1, prediction_2, best_draw, smart_prediction, consensus], analyzer)
+    
+    return {
+        'probability_based': prediction_1,
+        'quality_weighted': prediction_2,
+        'best_single': best_draw,
+        'smart_combination': smart_prediction,
+        'consensus': consensus
+    }
+
+def generate_smart_prediction(valid_draws, analyzer):
+    """Generate a smart prediction using multiple factors"""
+    # Get most frequent numbers across top draws
+    all_top_numbers = []
+    for draw in valid_draws.nlargest(5, 'Quality_Score')['Draw_Numbers']:
+        all_top_numbers.extend(draw)
+    
+    number_counts = {}
+    for num in all_top_numbers:
+        number_counts[num] = number_counts.get(num, 0) + 1
+    
+    # Take top 4 most frequent numbers
+    frequent_numbers = sorted(number_counts.items(), key=lambda x: x[1], reverse=True)[:4]
+    base_numbers = [num for num, count in frequent_numbers]
+    
+    # Add 2 numbers that provide good balance
+    remaining = [num for num in range(1, 50) if num not in base_numbers]
+    
+    # Prefer numbers that complete good patterns
+    candidate_1 = max(remaining, key=lambda x: (
+        (1 if x in analyzer.hot_numbers else 0) +
+        (2 if (min(base_numbers) <= x <= max(base_numbers)) else 0) +
+        (1 if any(abs(x-b) <= 5 for b in base_numbers) else 0)
+    ))
+    
+    base_numbers.append(candidate_1)
+    remaining = [num for num in remaining if num != candidate_1]
+    
+    # Final number for optimal spread
+    current_std = np.std(base_numbers)
+    candidate_2 = min(remaining, key=lambda x: abs(np.std(base_numbers + [x]) - 15))
+    
+    return sorted(base_numbers + [candidate_2])
+
+def generate_consensus_prediction(valid_draws):
+    """Generate prediction based on consensus across all good draws"""
+    all_good_numbers = []
+    for draw in valid_draws[valid_draws['Quality_Score'] > 15]['Draw_Numbers']:
+        all_good_numbers.extend(draw)
+    
+    number_freq = {}
+    for num in all_good_numbers:
+        number_freq[num] = number_freq.get(num, 0) + 1
+    
+    # Take 6 most frequent numbers
+    top_consensus = sorted(number_freq.items(), key=lambda x: x[1], reverse=True)[:6]
+    return sorted([num for num, freq in top_consensus])
+
+def analyze_predictions(predictions, analyzer):
+    """Comprehensive analysis of all predictions"""
+    analysis_data = []
+    
+    for i, pred in enumerate(predictions, 1):
+        odd_count = sum(1 for num in pred if num % 2 == 1)
+        sum_total = sum(pred)
+        hot_count = sum(1 for num in pred if num in analyzer.hot_numbers)
+        cold_count = sum(1 for num in pred if num in analyzer.cold_numbers)
+        spread = np.std(pred)
+        
+        analysis_data.append({
+            'Prediction': i,
+            'Numbers': pred,
+            'Odd_Count': odd_count,
+            'Sum': sum_total,
+            'Hot_Nums': hot_count,
+            'Cold_Nums': cold_count,
+            'Spread': f"{spread:.1f}"
+        })
+    
+    analysis_df = pd.DataFrame(analysis_data)
+    print(analysis_df.to_markdown(index=False))
+    
+    print("\n💡 RECOMMENDATION:")
+    print("Based on comprehensive analysis, consider predictions with:")
+    print("- 3 odd & 3 even numbers ✓")
+    print("- 2-3 hot numbers ✓") 
+    print("- 0-1 cold numbers ✓")
+    print("- Good number spread (std > 12) ✓")
+    print("- Total sum around 150 ✓")
+
+# ====================================================================
+# MAIN EXECUTION
+# ====================================================================
+
+if __name__ == "__main__":
+    print("🚀 TESSERACT 6/49 PREDICTION ENGINE - ENHANCED VERSION")
+    print("🎯 Starting comprehensive analysis...")
+    
+    start_time = time.time()
+    
+    # Run Enhanced Steps
+    df_data, X_vectors, analyzer = run_sensory_layer()
+    df_tesseract = run_pattern_layer(df_data, X_vectors, analyzer)
+    df_coherent_draws = run_possibility_layer(analyzer)
+    final_predictions = run_integration_layer(df_coherent_draws, analyzer)
+    
+    total_time = time.time() - start_time
+    print(f"\n✅ ANALYSIS COMPLETE! Total time: {total_time:.2f} seconds")
+    print("🎉 Thank you for using Tesseract Prediction Engine!")
